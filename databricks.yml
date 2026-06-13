@@ -31,7 +31,7 @@ resources:
         rate_limits:
           - key: user
             renewal_period: minute
-            calls: 20
+            calls: 30
 
   jobs:
     refresh_index:
@@ -58,7 +58,6 @@ targets:
     mode: production
     workspace:
       host: https://adb-7405619081216020.0.azuredatabricks.net
-      profile: mauro_premium
     run_as:
       user_name: mauroloprete@mauroloprete558.onmicrosoft.com
     variables:
