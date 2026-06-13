@@ -51,7 +51,7 @@ graph.add_edge("generate", END)
 
 # --- Memory (Lakebase) ---
 LAKEBASE_URL = os.getenv(
-    "LAKEBASE_URL", "postgresql://soporte-bot-memory:5432/postgres"
+    "LAKEBASE_URL", "postgresql://soporte-bot-mem:5432/postgres"
 )
 checkpointer = PostgresSaver.from_conn_string(LAKEBASE_URL)
 checkpointer.setup()

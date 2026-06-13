@@ -1,5 +1,6 @@
 bundle:
   name: soporte-bot
+  engine: direct
 
 variables:
   catalog:
@@ -33,6 +34,34 @@ resources:
             renewal_period: minute
             calls: 30
 
+  vector_search_endpoints:
+    soporte_bot_vs:
+      name: soporte-bot-vs
+      endpoint_type: STANDARD
+
+  postgres_projects:
+    soporte_bot_memory:
+      project_id: soporte-bot-mem
+      display_name: SoporteBot Memory Store
+
+  apps:
+    soporte_bot_app:
+      name: soporte-bot
+      source_code_path: ./app
+      config:
+        command:
+          - streamlit
+          - run
+          - app.py
+        env:
+          - name: SERVING_ENDPOINT
+            value: soporte-bot-${bundle.target}
+      resources:
+        - name: serving-endpoint
+          serving_endpoint:
+            name: soporte-bot-${bundle.target}
+            permission: CAN_QUERY
+
   jobs:
     refresh_index:
       name: "[${bundle.target}] Refresh Vector Index"
@@ -40,6 +69,9 @@ resources:
         - task_key: refresh
           notebook_task:
             notebook_path: ./src/refresh_index.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
       schedule:
         quartz_cron_expression: "0 0 6 * * ?"
         timezone_id: "America/Montevideo"
