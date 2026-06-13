@@ -31,7 +31,7 @@ resources:
         rate_limits:
           - key: user
             renewal_period: minute
-            calls: 20
+            calls: 30
 
   jobs:
     refresh_index:
