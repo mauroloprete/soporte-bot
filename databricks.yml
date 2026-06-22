@@ -9,7 +9,7 @@ variables:
   lakebase_project_id:
     default: maurobot-memory
   llm_endpoint:
-    default: databricks-meta-llama-3-3-70b-instruct
+    default: databricks-meta-llama-4-maverick
 
 resources:
   schemas:
