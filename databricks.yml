@@ -54,25 +54,6 @@ resources:
             safety: true
             pii:
               behavior: BLOCK
-            invalid_keywords:
-              - "ignore previous instructions"
-              - "ignore your instructions"
-              - "olvida tus instrucciones"
-              - "ignora tus instrucciones"
-            valid_topics:
-              - "Databricks"
-              - "Data Engineering"
-              - "Delta Lake"
-              - "Apache Spark"
-              - "MLOps"
-              - "MLflow"
-              - "SQL"
-              - "ETL"
-              - "Data Architecture"
-          output:
-            safety: true
-            pii:
-              behavior: BLOCK
 
   vector_search_endpoints:
     mauro_bot_vs:

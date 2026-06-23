@@ -5,7 +5,7 @@ from typing import Any, AsyncGenerator, Sequence, TypedDict
 import mlflow
 from databricks.sdk import WorkspaceClient
 from databricks_langchain import ChatDatabricks
-from langchain_core.messages import AnyMessage
+from langchain_core.messages import AIMessage, AnyMessage
 from langgraph.graph import END, StateGraph, add_messages
 from mlflow.genai.agent_server import invoke, stream
 from mlflow.types.responses import (
@@ -87,7 +87,24 @@ def generate(state: AgentState):
         {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nContexto:\n{context}"},
         *[{"role": m.type, "content": m.content} for m in state["messages"]],
     ]
-    response = model.invoke(messages)
+    try:
+        response = model.invoke(messages)
+    except Exception as exc:
+        err_msg = str(exc)
+        if "input_guardrail_triggered" in err_msg:
+            if "pii_detection" in err_msg:
+                text = (
+                    "Tu mensaje fue bloqueado por contener datos personales sensibles "
+                    "(como tarjetas de credito o documentos de identidad). "
+                    "Por tu seguridad, no puedo procesar ese tipo de informacion."
+                )
+            else:
+                text = (
+                    "Tu mensaje fue bloqueado por los guardrails de seguridad. "
+                    "Intenta reformular tu pregunta sobre Databricks o Data Engineering."
+                )
+            return {"messages": [AIMessage(content=text)]}
+        raise
     return {"messages": [response]}
 
 
