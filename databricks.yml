@@ -9,7 +9,7 @@ variables:
   lakebase_project_id:
     default: maurobot-memory
   llm_endpoint:
-    default: databricks-meta-llama-4-maverick
+    default: databricks-meta-llama-3-3-70b-instruct
 
 resources:
   schemas:
@@ -27,6 +27,35 @@ resources:
       name: mauro_bot
       catalog_name: ${var.catalog}
       schema_name: ${var.schema}
+
+  model_serving_endpoints:
+    llm_gateway:
+      name: mauro-bot-llm-gateway
+      config:
+        served_entities:
+          - external_model:
+              name: ${var.llm_endpoint}
+              provider: databricks-model-serving
+              task: llm/v1/chat
+              databricks_model_serving_config:
+                databricks_workspace_url: https://adb-7405619081216020.0.azuredatabricks.net
+                databricks_api_token: "{{secrets/mauro-bot/databricks-token}}"
+      ai_gateway:
+        inference_table_config:
+          enabled: true
+          catalog_name: ${var.catalog}
+          schema_name: ${var.schema}
+        rate_limits:
+          - key: user
+            renewal_period: minute
+            calls: 30
+        guardrails:
+          input:
+            safety: true
+            pii:
+              behavior: BLOCK
+          output:
+            safety: true
 
   vector_search_endpoints:
     mauro_bot_vs:
@@ -75,7 +104,7 @@ resources:
           - name: VS_INDEX_NAME
             value: ${var.catalog}.${var.schema}.mauro_bot_vs_index
           - name: LLM_ENDPOINT
-            value: ${var.llm_endpoint}
+            value: ${resources.model_serving_endpoints.llm_gateway.name}
       resources:
         - name: postgres
           postgres:
@@ -83,12 +112,10 @@ resources:
             database: "projects/${var.lakebase_project_id}/branches/production/databases/databricks-postgres"
             permission: CAN_CONNECT_AND_CREATE
 
-  # postgres_projects omitido: bug #5183 — siempre hace POST,
-  # falla con "already exists" en re-deploy. Crear via UI o CLI.
-  # postgres_projects:
-  #   mauro_bot_memory:
-  #     project_id: maurobot-memory
-  #     display_name: Mauro Bot Memory Store
+  postgres_projects:
+    mauro_bot_memory:
+      project_id: maurobot-memory
+      display_name: Mauro Bot Memory Store
 
 targets:
   dev:
