@@ -4,7 +4,7 @@ from typing import Any, AsyncGenerator, Sequence, TypedDict
 
 import mlflow
 from databricks.sdk import WorkspaceClient
-from databricks_langchain import ChatDatabricks
+from databricks_openai import DatabricksOpenAI
 from langchain_core.messages import AIMessage, AnyMessage
 from langgraph.graph import END, StateGraph, add_messages
 from mlflow.genai.agent_server import invoke, stream
@@ -14,6 +14,7 @@ from mlflow.types.responses import (
     ResponsesAgentStreamEvent,
     to_chat_completions_input,
 )
+from openai import BadRequestError
 from typing_extensions import Annotated
 
 from agent_server.utils_memory import get_lakebase_resources
@@ -24,6 +25,7 @@ logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
 
 VS_INDEX_NAME = os.getenv("VS_INDEX_NAME", "dev_bronze.labs.mauro_bot_vs_index")
 LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "databricks-meta-llama-3-3-70b-instruct")
+USE_AI_GATEWAY = os.getenv("USE_AI_GATEWAY", "false").lower() == "true"
 
 SYSTEM_PROMPT = (
     "Sos Mauro Bot, una replica de Mauro Loprete — Data Engineer "
@@ -54,6 +56,7 @@ class AgentState(TypedDict, total=False):
 
 
 _w = None
+_llm_client = None
 
 
 def _get_workspace():
@@ -61,6 +64,13 @@ def _get_workspace():
     if _w is None:
         _w = WorkspaceClient()
     return _w
+
+
+def _get_llm_client():
+    global _llm_client
+    if _llm_client is None:
+        _llm_client = DatabricksOpenAI(use_ai_gateway=USE_AI_GATEWAY)
+    return _llm_client
 
 
 def retrieve(state: AgentState):
@@ -82,30 +92,46 @@ def retrieve(state: AgentState):
 
 def generate(state: AgentState):
     context = state.get("context", "")
-    model = ChatDatabricks(endpoint=LLM_ENDPOINT)
+    client = _get_llm_client()
     messages = [
         {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nContexto:\n{context}"},
-        *[{"role": m.type, "content": m.content} for m in state["messages"]],
+        *[
+            {
+                "role": {"human": "user", "ai": "assistant"}.get(m.type, m.type),
+                "content": m.content,
+            }
+            for m in state["messages"]
+        ],
     ]
     try:
-        response = model.invoke(messages)
-    except Exception as exc:
+        resp = client.chat.completions.create(
+            model=LLM_ENDPOINT,
+            messages=messages,
+        )
+        text = resp.choices[0].message.content
+    except BadRequestError as exc:
         err_msg = str(exc)
-        if "input_guardrail_triggered" in err_msg:
-            if "pii_detection" in err_msg:
+        if "REQUEST_BLOCKED_BY_GUARDRAIL" in err_msg or "guardrail" in err_msg.lower():
+            if "PII" in err_msg or "pii" in err_msg:
                 text = (
                     "Tu mensaje fue bloqueado por contener datos personales sensibles "
                     "(como tarjetas de credito o documentos de identidad). "
                     "Por tu seguridad, no puedo procesar ese tipo de informacion."
+                )
+            elif "Jailbreak" in err_msg or "jailbreak" in err_msg.lower():
+                text = (
+                    "Tu mensaje fue bloqueado por los guardrails de seguridad "
+                    "al detectar un intento de manipulacion. "
+                    "Intenta reformular tu pregunta sobre Databricks o Data Engineering."
                 )
             else:
                 text = (
                     "Tu mensaje fue bloqueado por los guardrails de seguridad. "
                     "Intenta reformular tu pregunta sobre Databricks o Data Engineering."
                 )
-            return {"messages": [AIMessage(content=text)]}
-        raise
-    return {"messages": [response]}
+        else:
+            raise
+    return {"messages": [AIMessage(content=text)]}
 
 
 def _build_graph():

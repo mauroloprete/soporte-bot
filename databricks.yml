@@ -86,7 +86,7 @@ resources:
   apps:
     mauro_bot_app:
       name: mauro-bot
-      description: "RAG chatbot — Spark de Ideas blog"
+      description: "RAG chatbot — Spark de Ideas blog (AI Gateway V2)"
       source_code_path: ./
       config:
         command: ["uv", "run", "start-app"]
@@ -102,13 +102,16 @@ resources:
           - name: VS_INDEX_NAME
             value: ${var.catalog}.${var.schema}.mauro_bot_vs_index
           - name: LLM_ENDPOINT
-            value: ${resources.model_serving_endpoints.llm_gateway.name}
+            value: mauro-bot-llm-endpoint
+          - name: USE_AI_GATEWAY
+            value: "true"
       resources:
         - name: postgres
           postgres:
             branch: "projects/${var.lakebase_project_id}/branches/production"
             database: "projects/${var.lakebase_project_id}/branches/production/databases/databricks-postgres"
             permission: CAN_CONNECT_AND_CREATE
+
 
   # postgres_projects omitido: bug #5183 — siempre hace POST,
   # falla con "already exists" en re-deploy. Crear via UI o CLI.
