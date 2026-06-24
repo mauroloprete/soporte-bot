@@ -131,8 +131,9 @@ def generate(state: AgentState):
         text = resp.choices[0].message.content
     except BadRequestError as exc:
         err_msg = str(exc)
+        logger.error("BadRequestError from LLM: %s", err_msg)
         if "REQUEST_BLOCKED_BY_GUARDRAIL" in err_msg or "guardrail" in err_msg.lower():
-            if "PII" in err_msg or "pii" in err_msg:
+            if "pii_detection\":true" in err_msg.lower() or "pii: block" in err_msg.lower():
                 text = (
                     "Tu mensaje fue bloqueado por contener datos personales sensibles "
                     "(como tarjetas de credito o documentos de identidad). "
