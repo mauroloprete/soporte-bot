@@ -10,10 +10,15 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
 
 import logging
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 from fastapi.responses import HTMLResponse
 from databricks_ai_bridge.long_running import LongRunningAgentServer
 from mlflow.genai.agent_server import setup_mlflow_git_based_version_tracking
 
+import os
+
+from agent_server.agent import _user_token
 from agent_server.utils_memory import init_lakebase_config, lakebase_context, set_lakebase_resources
 
 logger = logging.getLogger(__name__)
@@ -30,17 +35,35 @@ agent_server = LongRunningAgentServer(
 
 app = agent_server.app
 
+
+class UserTokenMiddleware(BaseHTTPMiddleware):
+    """Captura x-forwarded-access-token y lo inyecta en el ContextVar."""
+
+    async def dispatch(self, request: Request, call_next):
+        token = request.headers.get("x-forwarded-access-token")
+        tok = _user_token.set(token)
+        try:
+            return await call_next(request)
+        finally:
+            _user_token.reset(tok)
+
+
+app.add_middleware(UserTokenMiddleware)
+
 try:
     setup_mlflow_git_based_version_tracking()
 except Exception as e:
     logger.warning("MLflow git version tracking unavailable: %s", e)
 
 CHAT_HTML = (Path(__file__).parent / "chat.html").read_text()
+_USE_AI_GATEWAY = os.environ.get("USE_AI_GATEWAY", "false").lower() == "true"
 
 
 @app.get("/", response_class=HTMLResponse)
 async def chat_page():
-    return CHAT_HTML
+    badge = "AI Gateway V2" if _USE_AI_GATEWAY else "Sin AI Gateway"
+    color = "#0d9488" if _USE_AI_GATEWAY else "#dc2626"
+    return CHAT_HTML.replace("<!--GATEWAY_BADGE-->", f'<span style="background:{color};padding:.2rem .6rem;border-radius:1rem;font-size:.75rem;font-weight:600;">{badge}</span>')
 
 
 _original_lifespan = app.router.lifespan_context

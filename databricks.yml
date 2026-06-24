@@ -7,7 +7,7 @@ variables:
   schema:
     default: labs
   lakebase_project_id:
-    default: maurobot-memory
+    default: mauro-bot-memory
   llm_endpoint:
     default: databricks-meta-llama-3-3-70b-instruct
 
@@ -21,12 +21,38 @@ resources:
     agent_experiment:
       name: /Users/${workspace.current_user.userName}/mauro-bot
 
-  # Mantener para no borrar las 12 versiones existentes
   registered_models:
     mauro_bot_model:
       name: mauro_bot
       catalog_name: ${var.catalog}
       schema_name: ${var.schema}
+
+  model_serving_endpoints:
+    llm_gateway:
+      name: mauro-bot-llm-gateway
+      config:
+        served_entities:
+          - external_model:
+              name: ${var.llm_endpoint}
+              provider: databricks-model-serving
+              task: llm/v1/chat
+              databricks_model_serving_config:
+                databricks_workspace_url: https://adb-7405619081216020.0.azuredatabricks.net
+                databricks_api_token: "{{secrets/mauro-bot/databricks-token}}"
+      ai_gateway:
+        inference_table_config:
+          enabled: true
+          catalog_name: ${var.catalog}
+          schema_name: ${var.schema}
+          table_name_prefix: mauro_bot_llm
+        rate_limits:
+          - key: user
+            renewal_period: minute
+            calls: 30
+        guardrails:
+          input:
+            pii:
+              behavior: BLOCK
 
   vector_search_endpoints:
     mauro_bot_vs:
@@ -51,7 +77,7 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
-              vs_endpoint_name: ${resources.vector_search_endpoints.mauro_bot_vs.name}
+              vs_endpoint_name: mauro-bot-vs
       schedule:
         quartz_cron_expression: "0 0 6 * * ?"
         timezone_id: "America/Montevideo"
@@ -59,8 +85,10 @@ resources:
   apps:
     mauro_bot_app:
       name: mauro-bot
-      description: "RAG chatbot — Spark de Ideas blog"
+      description: "[${bundle.target}] RAG chatbot — Spark de Ideas blog (AI Gateway V2)"
       source_code_path: ./
+      user_api_scopes:
+        - ai-gateway
       config:
         command: ["uv", "run", "start-app"]
         env:
@@ -75,13 +103,20 @@ resources:
           - name: VS_INDEX_NAME
             value: ${var.catalog}.${var.schema}.mauro_bot_vs_index
           - name: LLM_ENDPOINT
-            value: ${var.llm_endpoint}
+            value: mauro-bot-llm-endpoint
+          - name: USE_AI_GATEWAY
+            value: "true"
       resources:
         - name: postgres
           postgres:
             branch: "projects/${var.lakebase_project_id}/branches/production"
             database: "projects/${var.lakebase_project_id}/branches/production/databases/databricks-postgres"
             permission: CAN_CONNECT_AND_CREATE
+        - name: llm-gateway
+          serving_endpoint:
+            name: ${resources.model_serving_endpoints.llm_gateway.name}
+            permission: CAN_QUERY
+
 
   # postgres_projects omitido: bug #5183 — siempre hace POST,
   # falla con "already exists" en re-deploy. Crear via UI o CLI.
@@ -108,3 +143,6 @@ targets:
       user_name: ${workspace.current_user.userName}
     variables:
       catalog: pro_bronze
+    resources:
+      # Bug #5183: siempre hace POST. Ya creado via UI.
+      postgres_projects: null
